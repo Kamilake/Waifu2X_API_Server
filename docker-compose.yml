@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   waifu2x:
     image: kamilake/waifu2x-api-server
