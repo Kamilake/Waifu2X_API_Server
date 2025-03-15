@@ -7,6 +7,7 @@ import logging
 import shutil
 from PIL import Image
 import tempfile
+import ipaddress
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/waifu2x_uploads'
@@ -607,6 +608,63 @@ def index():
     });
     </script>
     """
+
+def is_internal_ip(ip):
+    """
+    내부 네트워크 IP인지 확인합니다.
+    내부 네트워크 범위:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 127.0.0.0/8 (로컬호스트)
+    """
+    if ip == '127.0.0.1' or ip == 'localhost':
+        return True
+    
+    internal_networks = [
+        ipaddress.ip_network('10.0.0.0/8'),
+        ipaddress.ip_network('172.16.0.0/12'),
+        ipaddress.ip_network('192.168.0.0/16'),
+        ipaddress.ip_network('127.0.0.0/8')
+    ]
+    
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+        for network in internal_networks:
+            if ip_obj in network:
+                return True
+        return False
+    except ValueError:
+        return False
+
+@app.route('/api/v1/shutdown', methods=['POST'])
+def shutdown():
+    """서버를 종료하는 엔드포인트"""
+    # 요청이 내부 네트워크에서 오는지 확인
+    client_ip = request.remote_addr
+    
+    if not is_internal_ip(client_ip):
+        app.logger.warning(f"외부 IP {client_ip}에서 서버 종료 시도")
+        return jsonify({'error': '내부 네트워크에서만 서버를 종료할 수 있습니다.'}), 403
+    
+    app.logger.info(f"IP {client_ip}에서 서버 종료 요청")
+    
+    # 비동기적으로 서버 종료 (응답을 보낸 후 종료하기 위함)
+    def shutdown_server():
+        # 잠시 대기 후 서버 종료
+        import time
+        import threading
+        def delayed_shutdown():
+            time.sleep(1)  # 응답을 보낼 시간을 주기 위해 1초 대기
+            os._exit(0)    # 강제 종료
+        
+        thread = threading.Thread(target=delayed_shutdown)
+        thread.daemon = True
+        thread.start()
+    
+    shutdown_server()
+    return jsonify({'message': '서버가 종료됩니다...'}), 200
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     app.run(host='0.0.0.0', port=8080, debug=True)
