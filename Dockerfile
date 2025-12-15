@@ -39,6 +39,7 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 RUN waifu2x-caffe --help
 WORKDIR /usr/src/waifu2x
 COPY app.py /usr/src/waifu2x/app.py
+COPY health_sample.png /usr/src/waifu2x/health_sample.png
 EXPOSE 80
 
 CMD ["gunicorn", "--timeout=60", "-w", "2", "-b", "0.0.0.0:80", "app:app"]
