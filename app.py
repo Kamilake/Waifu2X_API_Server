@@ -728,17 +728,25 @@ def index():
 @app.route('/api/v1/shutdown', methods=['POST'])
 def shutdown():
     """서버를 종료하는 엔드포인트 (Docker restart 정책에 의해 자동 재시작됨)"""
+    import signal
+    
     client_ip = request.remote_addr
     app.logger.info(f"IP {client_ip}에서 서버 종료 요청")
     
     # 비동기적으로 서버 종료 (응답을 보낸 후 종료하기 위함)
     def shutdown_server():
-        # 잠시 대기 후 서버 종료
         import time
         import threading
         def delayed_shutdown():
             time.sleep(1)  # 응답을 보낼 시간을 주기 위해 1초 대기
-            os._exit(0)    # 강제 종료
+            # Gunicorn 마스터 프로세스에 SIGTERM 시그널 전송
+            # 현재 프로세스의 부모 프로세스(마스터)를 종료
+            try:
+                os.kill(os.getppid(), signal.SIGTERM)
+            except Exception as e:
+                app.logger.error(f"마스터 프로세스 종료 실패: {e}")
+                # 폴백: 전체 프로세스 그룹 종료
+                os.killpg(os.getpgid(0), signal.SIGTERM)
         
         thread = threading.Thread(target=delayed_shutdown)
         thread.daemon = True
