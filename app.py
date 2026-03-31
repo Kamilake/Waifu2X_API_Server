@@ -88,15 +88,42 @@ def split_gif_frames(gif_path, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         
         # ImageMagick 명령어로 GIF 프레임 분리
-        cmd = ['convert', gif_path, '-coalesce', f'{output_dir}/frame%03d.png']
+        # +remap: 잘못된 컬러맵 인덱스를 수정하기 위해 최적의 공유 컬러맵을 재생성
+        cmd = ['convert', gif_path, '+remap', '-coalesce', f'{output_dir}/frame%03d.png']
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
-            app.logger.error(f"GIF 분리 실패: {stderr.decode()}")
-            return False, stderr.decode()
+            stderr_text = stderr.decode()
+            app.logger.warning(f"ImageMagick 분리 실패, Pillow 폴백 시도: {stderr_text}")
+            
+            # Pillow로 폴백 (colormap 에러에 더 관대함)
+            try:
+                img = Image.open(gif_path)
+                frame_count = 0
+                frame_delays = []
+                try:
+                    while True:
+                        # RGBA로 변환하여 컬러맵 문제 우회
+                        frame = img.convert('RGBA')
+                        frame_path = os.path.join(output_dir, f"frame{frame_count:03d}.png")
+                        frame.save(frame_path, "PNG")
+                        
+                        delay = img.info.get('duration', 100)
+                        frame_delays.append(delay / 10)
+                        
+                        frame_count += 1
+                        img.seek(img.tell() + 1)
+                except EOFError:
+                    pass
+                
+                app.logger.info(f"Pillow 폴백으로 {frame_count}개 프레임 추출 완료")
+                return True, frame_delays
+            except Exception as pillow_err:
+                app.logger.error(f"Pillow 폴백도 실패: {str(pillow_err)}")
+                return False, str(pillow_err)
         
-        # 지연 시간 추출
+        # ImageMagick 성공 시 기존 로직으로 지연 시간 추출
         img = Image.open(gif_path)
         frame_delays = []
         try:
