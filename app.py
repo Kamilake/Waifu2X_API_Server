@@ -101,25 +101,28 @@ def split_gif_frames(gif_path, output_dir):
             )
             
             # Pillow로 폴백 (colormap 에러에 더 관대함)
+            # Pillow는 GIF 프레임 접근 시 내부적으로 coalesce를 처리함
+            # (disposal method, offset, 부분 프레임 합성 포함)
             try:
-                img = Image.open(gif_path)
-                frame_count = 0
-                frame_delays = []
-                try:
-                    while True:
-                        # RGBA로 변환하여 컬러맵 문제 우회
-                        frame = img.convert('RGBA')
-                        frame_path = os.path.join(output_dir, f"frame{frame_count:03d}.png")
-                        frame.save(frame_path, "PNG")
-                        
-                        delay = img.info.get('duration', 100)
-                        frame_delays.append(delay / 10)
-                        
-                        frame_count += 1
-                        img.seek(img.tell() + 1)
-                except EOFError:
-                    pass
-                
+                with Image.open(gif_path) as img:
+                    frame_count = 0
+                    frame_delays = []
+                    try:
+                        while True:
+                            # RGBA로 변환 — Pillow가 내부적으로 disposal/offset을
+                            # 처리하여 coalesce된 전체 프레임을 반환
+                            frame = img.convert('RGBA')
+                            frame_path = os.path.join(output_dir, f"frame{frame_count:03d}.png")
+                            frame.save(frame_path, "PNG")
+
+                            delay = img.info.get('duration', 100)
+                            frame_delays.append(delay / 10)
+
+                            frame_count += 1
+                            img.seek(img.tell() + 1)
+                    except EOFError:
+                        pass
+
                 app.logger.info(f"Pillow 폴백으로 {frame_count}개 프레임 추출 완료")
                 return True, frame_delays
             except Exception as pillow_err:
@@ -127,16 +130,16 @@ def split_gif_frames(gif_path, output_dir):
                 return False, str(pillow_err)
         
         # ImageMagick 성공 시 기존 로직으로 지연 시간 추출
-        img = Image.open(gif_path)
-        frame_delays = []
-        try:
-            while True:
-                # 각 프레임의 지연 시간을 밀리초 단위로 저장 (기본값 100ms)
-                delay = img.info.get('duration', 100)
-                frame_delays.append(delay / 10)  # ImageMagick은 1/100초 단위 사용
-                img.seek(img.tell() + 1)
-        except EOFError:
-            pass  # 모든 프레임 처리 완료
+        with Image.open(gif_path) as img:
+            frame_delays = []
+            try:
+                while True:
+                    # 각 프레임의 지연 시간을 밀리초 단위로 저장 (기본값 100ms)
+                    delay = img.info.get('duration', 100)
+                    frame_delays.append(delay / 10)  # ImageMagick은 1/100초 단위 사용
+                    img.seek(img.tell() + 1)
+            except EOFError:
+                pass  # 모든 프레임 처리 완료
         
         app.logger.info(f"GIF frames split successfully")
         return True, frame_delays
