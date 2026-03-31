@@ -94,8 +94,11 @@ def split_gif_frames(gif_path, output_dir):
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
-            stderr_text = stderr.decode()
-            app.logger.warning(f"ImageMagick 분리 실패, Pillow 폴백 시도: {stderr_text}")
+            stderr_text = stderr.decode("utf-8", errors="replace")
+            stdout_text = stdout.decode("utf-8", errors="replace") if stdout is not None else ""
+            app.logger.warning(
+                f"ImageMagick 분리 실패, Pillow 폴백 시도: stderr={stderr_text}, stdout={stdout_text}"
+            )
             
             # Pillow로 폴백 (colormap 에러에 더 관대함)
             try:
